@@ -101,10 +101,27 @@ def temperature():
     return jsonify(tempList)
 
 @app.route("/api/v1.0/<start>")
-def startdate(yearAgo):
+def start(yearAgo):
     session = Session(engine)
+    select = [Measurement.date, func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)]
+
+    results =  (session.query(*select)
+                       .filter(func.strftime("%Y-%m-%d", Measurement.date) >= yearAgo)
+                       .group_by(Measurement.date)
+                       .all())
 
     session.close()
+    
+    dates = []                       
+    for result in results:
+        date_dict = {}
+        date_dict["Date"] = result[0]
+        date_dict["Low Temp"] = result[1]
+        date_dict["Avg Temp"] = result[2]
+        date_dict["High Temp"] = result[3]
+        dates.append(date_dict)
+    return jsonify(dates)
+    
 
 
 if __name__ == '__main__':
