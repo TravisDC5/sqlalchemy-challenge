@@ -27,10 +27,15 @@ session = Session(engine)
 #weather app
 app = Flask(__name__)
 
-maxDate = session.query(func.max(func.strftime("%Y-%m-%d", Measurement.date))).limit(5).all()
+maxDate = session.query(func.max(func.strftime("%Y-%m-%d", Measurement.date))).all()
 tempValMaxDate = list(np.ravel(maxDate))[0]
 tempValMaxDate = dt.datetime.strptime(tempValMaxDate, '%Y-%m-%d')
-yearAgo = tempValMaxDate - dt.timedelta(weeks=52.2)
+
+minDate = session.query(func.min(func.strftime("%Y-%m-%d", Measurement.date))).all()
+tempValMinDate = list(np.ravel(minDate))[0]
+tempValMinDate = dt.datetime.strptime(tempValMinDate, '%Y-%m-%d')
+
+yearAgo = tempValMaxDate - dt.timedelta(days=365)
 
 stations = (session.query(Measurement.station, func.count(Measurement.station))
                         .group_by(Measurement.station)
@@ -47,11 +52,14 @@ session.close()
 def home():
     return (f"Welcome to Hawaii's Climate: Surf's Up <br>"
             f"Available Routes: <br>"
+            f"------------------------------------- <br>"
             f"/api/v1.0/stations <br>"
             f"/api/v1.0/precipitation <br>"
             f"/api/v1.0/temperature <br>"
-            f"/api/v1.0/2016-08-23 <br>"
-            f"/api/v1.0/2016-08-23/2017-08-23"
+            f"/api/v1.0/* <br>"
+            f"/api/v1.0/*/* <br>"
+            f"------------------------------------- <br>"
+            f"* - Please enter a date in <br>  YYYY-MM-DD format."
     )
 
 @app.route("/api/v1.0/stations")
@@ -100,13 +108,19 @@ def temperature():
 
     return jsonify(tempList)
 
-@app.route("/api/v1.0/<yearAgo>")
-def start(yearAgo):
+@app.route("/api/v1.0/<start>")
+def start(start):
+    tempValMaxDate2 = str(tempValMaxDate)
+    tempValMinDate2 = str(tempValMinDate)
+    
+    if(start <= tempValMinDate2) | (start > tempValMaxDate2):
+        return(f"Please choose a different date, between {minDate} and {maxDate}")
+    
     session = Session(engine)
     select = [Measurement.date, func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)]
 
     results =  (session.query(*select)
-                       .filter(func.strftime("%Y-%m-%d", Measurement.date) >= yearAgo)
+                       .filter(func.strftime("%Y-%m-%d", Measurement.date) >= start)
                        .group_by(Measurement.date)
                        .all())
 
@@ -122,25 +136,33 @@ def start(yearAgo):
         dates.append(date_dict)
     return jsonify(dates)
     
-@app.route('/api/v1.0/<yearAgo>/<maxDate>')
-def startEnd(yearAgo, maxDate):
-    sel = [Measurement.date, func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)]
+@app.route('/api/v1.0/<start>/<end>')
+def startEnd(start, end):
+    
+    tempValMaxDate2 = str(tempValMaxDate)
+    tempValMinDate2 = str(tempValMinDate)
+    
+    
+    if(start >= end):
+        return (f"Beginning and End Date Mismatch:")
+    if(start <= tempValMinDate2) | (end > tempValMaxDate2):
+        return(f"Please choose a different date, between {minDate} and {maxDate}")
+    
+    
+    session = Session(engine)
+    select = [func.min(Measurement.tobs), func.max(Measurement.tobs), func.avg(Measurement.tobs)]
 
-    results =  (session.query(*sel)
-                       .filter(func.strftime("%Y-%m-%d", Measurement.date) >= yearAgo)
-                       .filter(func.strftime("%Y-%m-%d", Measurement.date) <= maxDate)
-                       .group_by(Measurement.date)
+    results =  (session.query(*select)
+                       .filter(func.strftime("%Y-%m-%d", Measurement.date) >= start)
+                       .filter(func.strftime("%Y-%m-%d", Measurement.date) <= end)
+                       #.group_by(Measurement.date)
                        .all())
 
-    dates = []                       
-    for result in results:
-        date_dict = {}
-        date_dict["Date"] = result[0]
-        date_dict["Low Temp"] = result[1]
-        date_dict["Avg Temp"] = result[2]
-        date_dict["High Temp"] = result[3]
-        dates.append(date_dict)
-    return jsonify(dates)
+    session.close()
+
+    something = list(np.ravel(results))
+    return jsonify(something)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
